@@ -111,7 +111,7 @@ jobs:
         git commit -m "Auto-update: Azure MLOps pipeline outputs" || true
         git push
 
-    # ----------------------
+    # ---------------------
     # UPLOAD METRICS
     # ----------------------
     - name: Upload metrics artifact
