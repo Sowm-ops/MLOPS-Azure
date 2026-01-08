@@ -1,0 +1,82 @@
+name: MLOps Pipeline (Azure)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  mlops:
+    runs-on: ubuntu-latest
+
+    steps:
+    # --------------------------------------------------
+    # 1. CHECKOUT CODE
+    # --------------------------------------------------
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # --------------------------------------------------
+    # 2. PYTHON SETUP
+    # --------------------------------------------------
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install dvc[azure]
+
+    # --------------------------------------------------
+    # 3. CONFIGURE AZURE CREDENTIALS
+    # --------------------------------------------------
+    - name: Configure Azure Credentials
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    # --------------------------------------------------
+    # 4. SETUP DVC REMOTE FOR AZURE
+    # --------------------------------------------------
+    - name: Configure DVC Azure Remote
+      run: |
+        dvc remote modify azure connection_string "${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" --local
+        dvc remote modify azure container_name "dvcstore" --local
+
+    # --------------------------------------------------
+    # 5. DOWNLOAD DATA/MODELS FROM AZURE STORAGE
+    # --------------------------------------------------
+    - name: Pull Data from Azure
+      run: dvc pull --force || echo "No remote data yet"
+
+    # --------------------------------------------------
+    # 6. RUN FULL PIPELINE
+    # --------------------------------------------------
+    - name: Run Data Preparation
+      run: python src/data_prep.py
+
+    - name: Run Model Training
+      run: python src/train.py
+
+    - name: Reproduce DVC Pipeline
+      run: dvc repro
+
+    # --------------------------------------------------
+    # 7. PUSH ARTIFACTS TO AZURE STORAGE
+    # --------------------------------------------------
+    - name: Push Artifacts to Azure
+      run: dvc push
+
+    # --------------------------------------------------
+    # 8. COMMIT UPDATED METADATA TO GITHUB
+    # --------------------------------------------------
+    - name: Commit Updated DVC Files
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+        git add .
+        git commit -m "Auto-update: Azure pipeline run" || echo "No changes"
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main || echo "Nothing to push"
