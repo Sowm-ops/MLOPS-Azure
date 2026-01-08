@@ -1,16 +1,15 @@
 scikit-learn
 pandas
 numpy
-dvc[azure]
-boto3
 joblib
 streamlit
 mlflow
-scikit-learn
 plotly
 seaborn
 matplotlib
 nltk
 xgboost
-dvc-s3
 evidently
+
+# DVC for Azure Blob Storage
+dvc[azure]
