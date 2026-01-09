@@ -13,3 +13,7 @@ evidently
 
 # DVC for Azure Blob Storage
 dvc[azure]
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
