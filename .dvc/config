@@ -1,4 +1,4 @@
 [core]
     remote = azure
 ['remote "azure"']
-    url = azure://mlopsgithubaccount/dvcstore
+    url = azure://dvcstore
