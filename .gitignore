@@ -22,3 +22,5 @@ Thumbs.db
 # Logs
 *.log
 /models
+/IMDB Dataset.csv
+/heart.csv
