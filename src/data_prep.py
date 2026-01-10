@@ -114,17 +114,17 @@ X_test_h_scaled  = pd.DataFrame(scaler.transform(X_test_h),      columns=X_test_
 # 3. SAVE ALL
 # -------------------------------------------------
 os.makedirs("data", exist_ok=True)
-os.makedirs("models", exist_ok=True)
+os.makedirs("artifacts/models", exist_ok=True)
 
 # IMDB
 pd.concat([X_train_i, y_train_i], axis=1).to_csv("data/imdb_train.csv", index=False)
 pd.concat([X_test_i,  y_test_i],  axis=1).to_csv("data/imdb_test.csv",  index=False)
-joblib.dump(vec, "models/imdb_vectorizer.pkl")
+joblib.dump(vec, "artifacts/models/imdb_vectorizer.pkl")
 
 # Heart
 pd.concat([X_train_h_scaled, y_train_h], axis=1).to_csv("data/heart_train.csv", index=False)
 pd.concat([X_test_h_scaled,  y_test_h],  axis=1).to_csv("data/heart_test.csv",  index=False)
-joblib.dump(scaler, "models/heart_scaler.pkl")
+joblib.dump(scaler, "artifacts/models/heart_scaler.pkl")
 
 # Legacy
 pd.concat([X_train_i, y_train_i], axis=1).to_csv("data/train.csv", index=False)
@@ -135,5 +135,5 @@ print("   data/imdb_train.csv")
 print("   data/imdb_test.csv")
 print("   data/heart_train.csv")
 print("   data/heart_test.csv")
-print("   models/imdb_vectorizer.pkl")
-print("   models/heart_scaler.pkl")
+print("   artifacts/models/imdb_vectorizer.pkl")
+print("   artifacts/models/heart_scaler.pkl")

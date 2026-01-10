@@ -35,7 +35,7 @@ print("USING MLFLOW DIR:", mlflow.get_tracking_uri())
 
 # Ensure dirs exist
 os.makedirs("metrics", exist_ok=True)
-os.makedirs("models", exist_ok=True)
+os.makedirs("artifacts/models", exist_ok=True)
 
 # -------------------------------------------------
 # LOAD CONFIG
@@ -106,7 +106,7 @@ def train_one(prefix, train_path, test_path, label_col):
         X_test[col]  = X_test[col].astype(str).map(lambda x: x if x in le.classes_ else "<UNK>")
         le.classes_ = np.append(le.classes_, "<UNK>")
         X_test[col] = le.transform(X_test[col])
-        joblib.dump(le, f"models/encoder_{col}.pkl")
+        joblib.dump(le, f"artifacts/models/encoder_{col}.pkl")
 
     # MLflow setup
     mlflow.set_experiment(f"{prefix}_experiment")
@@ -133,7 +133,7 @@ def train_one(prefix, train_path, test_path, label_col):
                 best_acc, best_mod, best_name = acc, grid.best_estimator_, name
 
         # Save the model
-        model_path = Path("models") / f"{prefix}_best.pkl"
+        model_path = Path("artifacts/models") / f"{prefix}_best.pkl"
         joblib.dump(best_mod, model_path)
         mlflow.sklearn.log_model(best_mod, f"{prefix}_model")
 
