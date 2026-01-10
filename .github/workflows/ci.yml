@@ -1,24 +1,32 @@
-name: Azure MLOps Pipeline (Train + DVC + Tests)
+name: Full Azure MLOps Pipeline (Train + Build + Deploy)
 
 permissions:
   contents: write
+  id-token: write
 
 on:
   push:
     branches: [main]
     paths:
       - "src/**"
+      - "serve.py"
+      - "Dockerfile"
+      - "requirements.txt"
       - "params.yaml"
       - "dvc.yaml"
       - "dvc.lock"
-      - "data/**"
       - "models/**"
+      - "data/**"
       - "metrics/**"
       - "tests/**"
       - ".github/workflows/ci.yml"
 
 jobs:
-  mlops:
+
+  ########################################################
+  #  TRAINING JOB (DVC + Tests + Train + Push)
+  ########################################################
+  train:
     runs-on: ubuntu-latest
 
     env:
@@ -26,45 +34,27 @@ jobs:
       AZURE_CONTAINER: dvcstore
 
     steps:
-    # ----------------------
-    # CHECKOUT
-    # ----------------------
+
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # ---------------------
-    # PYTHON
-    # ----------------------
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.10"
-    
-    - name: Add project root to PYTHONPATH
-      run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
 
     - name: Install Dependencies
       run: |
-        python -m pip install --upgrade pip
+        pip install --upgrade pip
         pip install -r requirements.txt
         pip install dvc[azure] pytest evidently==0.4.32
 
-    # ----------------------
-    # CONFIGURE DVC REMOTE (AZURE)
-    # ----------------------
     - name: Configure DVC Remote
-      run: |
-        dvc remote modify azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
+      run: dvc remote modify azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
 
-    # ----------------------
-    # FETCH DATA/MODELS
-    # ----------------------
-    - name: DVC Pull (Azure)
-      run: dvc pull -v --force || echo "No remote data yet"
+    - name: DVC Pull
+      run: dvc pull -v --force || echo "No cache yet."
 
-    # ----------------------
-    # DOWNLOAD NLTK
-    # ----------------------
     - name: Download NLTK Data
       run: |
         python - <<EOF
@@ -76,49 +66,74 @@ jobs:
         nltk.download('omw-1.4')
         EOF
 
-    # ----------------------
-    # TEST SUITE
-    # ----------------------
     - name: Run PyTest
-      run: |
-        echo "Running pytest test suite..."
-        pytest -q
+      run: pytest -q
 
     - name: Stop if tests fail
       if: failure()
       run: exit 1
 
-    # ----------------------
-    # RUN PIPELINE
-    # ----------------------
-    - name: Run Data Preparation
-      run: python src/data_prep.py
+    - name: Run Training Pipeline
+      run: |
+        python src/data_prep.py
+        python src/train.py
+        dvc repro
 
-    - name: Train Models
-      run: python src/train.py
-
-    - name: DVC Repro
-      run: dvc repro
-
-    - name: Push to Azure Blob
+    - name: Push updated artifacts
       run: dvc push -v
 
-    # ----------------------
-    # COMMIT METADATA
-    # ----------------------
-    - name: Commit updated DVC + metrics
+    - name: Commit updated pipeline files
       run: |
         git config --global user.name "github-actions"
         git config --global user.email "github-actions@github.com"
-        git add . || true
-        git commit -m "Auto-update: Azure MLOps pipeline outputs" || true
+        git add .
+        git commit -m "Auto update: training + dvc artifacts" || echo "No changes"
         git push
 
-    # ---------------------
-    # UPLOAD METRICS
-    # ---------------------
-    - name: Upload metrics artifact
-      uses: actions/upload-artifact@v4
+  ########################################################
+  #  BUILD DOCKER IMAGE AND PUSH TO ACR
+  ########################################################
+  build:
+    needs: train
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure login
+      uses: azure/login@v2
       with:
-        name: metrics
-        path: metrics/
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Azure CLI - Login to ACR
+      run: |
+        az acr login --name ${{ secrets.AZURE_REGISTRY_NAME }}
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE_NAME=${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/mlops-api:v${{ github.run_number }}
+        echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+        docker build -t $IMAGE_NAME .
+        docker push $IMAGE_NAME
+
+  ########################################################
+  #  DEPLOY NEW IMAGE TO AZURE CONTAINER APPS
+  ########################################################
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Deploy to Azure Container Apps
+      run: |
+        az containerapp update \
+          --name ${{ secrets.AZURE_CONTAINER_APP }} \
+          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+          --image ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/mlops-api:v${{ github.run_number }}
