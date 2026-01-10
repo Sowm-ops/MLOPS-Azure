@@ -44,7 +44,7 @@ MAX_WORDS   = cfg["preprocess"]["text"]["max_words"]
 # -------------------------------------------------
 @st.cache_resource
 def load_artifact(prefix, name):
-    path = Path("artifacts/models") / f"{prefix}_{name}.pkl"
+    path = Path("models") / f"{prefix}_{name}.pkl"
     if not path.exists():
         st.error(f"{prefix.upper()} {name} not found – run `train.py` first.")
         return None
