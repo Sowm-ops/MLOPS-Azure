@@ -70,15 +70,14 @@ pipeline {
 
                     echo Checking remote 'azurejenkins' status...
 
-                    REM Check if the remote has ANY data. 
-                    REM 'dvc list' fails (exit 1) if the remote is empty/new.
                     dvc list . --remote azurejenkins >nul 2>&1
 
                     IF %ERRORLEVEL% NEQ 0 (
-                        echo [INFO] Detected EMPTY remote. This is likely the first run. Skipping pull...
+                        echo [INFO] Detected EMPTY remote. Skipping pull...
                     ) ELSE (
                         echo [INFO] Remote data found. Syncing...
-                        dvc pull -r azurejenkins
+                        REM Added --force here to overwrite existing local files
+                        dvc pull -r azurejenkins --force
                     )
                     '''
                 }
