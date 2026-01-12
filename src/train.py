@@ -174,7 +174,7 @@ def train_one(prefix, train_path, test_path, label_col):
         if prefix == "heart":
             joblib.dump(heart_scaler, "models/heart_scaler.pkl")
 
-        print(f"{prefix.upper()} best → {best_name} ({best_acc:.4f})")
+        print(f"{prefix.upper()} best --> {best_name} ({best_acc:.4f})")
 
         # Metrics
         metric_file = f"metrics/{prefix}_metrics.json"
