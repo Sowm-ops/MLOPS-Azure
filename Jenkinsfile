@@ -2,11 +2,9 @@ pipeline {
     agent any
 
     environment {
-        AZURE_STORAGE_ACCOUNT = credentials('AZURE_STORAGE_ACCOUNT_JENKINS')
-        AZURE_STORAGE_KEY     = credentials('AZURE_STORAGE_KEY_JENKINS')
-
+        VENV_DIR = "${WORKSPACE}\\.venv"
         PIP_CACHE_DIR = "${WORKSPACE}\\.pip-cache"
-        VENV_DIR      = "${WORKSPACE}\\.venv"
+        PYTHONUTF8 = "1"
     }
 
     stages {
@@ -27,32 +25,31 @@ pipeline {
                 pip config set global.cache-dir "%PIP_CACHE_DIR%"
 
                 pip install -r requirements.txt
-                pip install dvc[azure] pytest
+                pip install dvc[azure] pytest nltk
                 '''
             }
         }
 
         stage('Configure DVC Remote (Jenkins only)') {
             steps {
-                bat '''
-                call "%VENV_DIR%\\Scripts\\activate"
+                withCredentials([
+                    string(credentialsId: 'AZURE_STORAGE_ACCOUNT_JENKINS', variable: 'AZURE_ACCOUNT'),
+                    string(credentialsId: 'AZURE_STORAGE_KEY_JENKINS', variable: 'AZURE_KEY')
+                ]) {
+                    bat '''
+                    call "%VENV_DIR%\\Scripts\\activate"
 
-                REM Clean slate (safe in CI)
-                dvc remote remove azurejenkins || echo "No existing Jenkins remote"
+                    dvc remote remove azurejenkins || echo "No existing Jenkins remote"
+                    dvc remote add -f azurejenkins azure://dvc-jenkins
+                    dvc remote modify --local azurejenkins account_name "%AZURE_ACCOUNT%"
+                    dvc remote modify --local azurejenkins account_key "%AZURE_KEY%"
+                    dvc remote default azurejenkins
 
-                REM Add remote WITH URL
-                dvc remote add azurejenkins azure://dvc-jenkins/
-                dvc remote modify --local azurejenkins account_name "%AZURE_STORAGE_ACCOUNT_JENKINS%"
-                dvc remote modify --local azurejenkins account_key "%AZURE_STORAGE_KEY_JENKINS%"
-                dvc remote default azurejenkins
-
-                REM Verify
-                dvc remote list
-                dvc config --list
-                '''
+                    dvc remote list
+                    '''
+                }
             }
         }
-
 
         stage('Download NLTK Data') {
             steps {
@@ -63,11 +60,11 @@ pipeline {
             }
         }
 
-        stage('DVC Pull') {
+        stage('DVC Pull (safe)') {
             steps {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
-                dvc pull -v || echo "No cache yet"
+                dvc pull --force || echo "No cache yet (expected on first run)"
                 '''
             }
         }
@@ -87,6 +84,7 @@ pipeline {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
                 set PYTHONPATH=%WORKSPACE%
+
                 dvc repro
                 '''
             }
@@ -106,14 +104,14 @@ pipeline {
             steps {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
-                dvc push -v
+                dvc push
                 '''
             }
         }
 
         stage('Archive Metrics') {
             steps {
-                archiveArtifacts artifacts: 'metrics/**', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'metrics/**', fingerprint: true, allowEmptyArchive: true
             }
         }
     }
