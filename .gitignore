@@ -1,6 +1,5 @@
 ﻿# Large data and models (handled by DVC/S3)
 data/
-models/
 mlruns/
 .venv/
 venv/
@@ -9,8 +8,6 @@ venvp/
 
 # Large binaries
 *.dll
-*.pkl
-*.joblib
 *.h5
 *.pt
 *.bin
@@ -21,6 +18,5 @@ Thumbs.db
 
 # Logs
 *.log
-/models
 /IMDB Dataset.csv
 /heart.csv
