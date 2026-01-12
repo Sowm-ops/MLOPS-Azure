@@ -1,11 +1,22 @@
 #!/usr/bin/env python
 """
 Trains best model for IMDB and Heart separately.
-Saves: models/imdb_best.pkl  and  models/heart_best.pkl
+Saves:
+- models/imdb_best.pkl
+- models/heart_best.pkl
+- models/imdb_vectorizer.pkl
+- models/heart_scaler.pkl
+
 Also creates DVC-required: metrics/train_metrics.json
 """
-import os, yaml, joblib, mlflow, mlflow.sklearn
-import pandas as pd, numpy as np
+
+import os
+import yaml
+import joblib
+import mlflow
+import mlflow.sklearn
+import pandas as pd
+import numpy as np
 from pathlib import Path
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score
@@ -15,12 +26,9 @@ from sklearn.preprocessing import LabelEncoder
 import xgboost as xgb
 from sklearn.ensemble import GradientBoostingClassifier
 import json
-import os, yaml, joblib, mlflow, mlflow.sklearn
-import pandas as pd, numpy as np
-from pathlib import Path
 
 # -------------------------------------------------
-# FORCE MLflow to ignore old KALYAN directory
+# FORCE MLflow local tracking
 # -------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MLFLOW_DIR = PROJECT_ROOT / "mlruns"
@@ -31,9 +39,15 @@ mlflow.set_registry_uri(MLFLOW_DIR.as_uri())
 
 print("USING MLFLOW DIR:", mlflow.get_tracking_uri())
 
+# -------------------------------------------------
+# LOAD preprocessing artifacts (from prepare_data)
+# -------------------------------------------------
+imdb_vectorizer = joblib.load("data/imdb_vectorizer.pkl")
+heart_scaler = joblib.load("data/heart_scaler.pkl")
 
-
+# -------------------------------------------------
 # Ensure dirs exist
+# -------------------------------------------------
 os.makedirs("metrics", exist_ok=True)
 os.makedirs("models", exist_ok=True)
 
@@ -54,20 +68,28 @@ MODELS_CFG  = cfg["models"]
 # HELPERS
 # -------------------------------------------------
 def safe_sample(df, n, label):
-    if n >= len(df): return df.copy()
+    if n >= len(df):
+        return df.copy()
     pos = df[df[label] == 1]
     neg = df[df[label] == 0]
     n_pos = min(len(pos), n // 2)
     n_neg = min(len(neg), n // 2)
-    if n_pos == 0 or n_neg == 0: return df.copy()
-    return pd.concat([pos.sample(n_pos, random_state=RS),
-                      neg.sample(n_neg, random_state=RS)]).sample(frac=1, random_state=RS)
+    if n_pos == 0 or n_neg == 0:
+        return df.copy()
+    return pd.concat([
+        pos.sample(n_pos, random_state=RS),
+        neg.sample(n_neg, random_state=RS)
+    ]).sample(frac=1, random_state=RS)
 
 def get_model(name):
-    if name == "lr":       return LogisticRegression(max_iter=300, n_jobs=-1, random_state=RS)
-    if name == "linearsvc":return LinearSVC(max_iter=2000, random_state=RS)
-    if name == "xgb":      return xgb.XGBClassifier(random_state=RS, n_jobs=-1)
-    if name == "gbm":      return GradientBoostingClassifier(random_state=RS)
+    if name == "lr":
+        return LogisticRegression(max_iter=300, n_jobs=-1, random_state=RS)
+    if name == "linearsvc":
+        return LinearSVC(max_iter=2000, random_state=RS)
+    if name == "xgb":
+        return xgb.XGBClassifier(random_state=RS, n_jobs=-1)
+    if name == "gbm":
+        return GradientBoostingClassifier(random_state=RS)
     raise ValueError(name)
 
 # -------------------------------------------------
@@ -80,8 +102,12 @@ def train_one(prefix, train_path, test_path, label_col):
 
     # Convert IMDB text labels
     if label_col == LABEL_IMDB:
-        train_df[label_col] = train_df[label_col].str.lower().map({"positive":1, "negative":0})
-        test_df[label_col]  = test_df[label_col].str.lower().map({"positive":1, "negative":0})
+        train_df[label_col] = train_df[label_col].str.lower().map(
+            {"positive": 1, "negative": 0}
+        )
+        test_df[label_col] = test_df[label_col].str.lower().map(
+            {"positive": 1, "negative": 0}
+        )
 
     train_df = train_df.dropna(subset=[label_col])
     test_df  = test_df.dropna(subset=[label_col])
@@ -103,7 +129,9 @@ def train_one(prefix, train_path, test_path, label_col):
     for col in X_train.select_dtypes("object"):
         le = LabelEncoder()
         X_train[col] = le.fit_transform(X_train[col].astype(str))
-        X_test[col]  = X_test[col].astype(str).map(lambda x: x if x in le.classes_ else "<UNK>")
+        X_test[col]  = X_test[col].astype(str).map(
+            lambda x: x if x in le.classes_ else "<UNK>"
+        )
         le.classes_ = np.append(le.classes_, "<UNK>")
         X_test[col] = le.transform(X_test[col])
         joblib.dump(le, f"models/encoder_{col}.pkl")
@@ -118,12 +146,15 @@ def train_one(prefix, train_path, test_path, label_col):
     with mlflow.start_run():
 
         for name, mc in MODELS_CFG.items():
-            if not mc.get("enabled"): 
+            if not mc.get("enabled"):
                 continue
 
             print(f"\n{prefix.upper()} – {name.upper()}")
             mod = get_model(name)
-            grid = GridSearchCV(mod, mc["params"], cv=CV, scoring="accuracy", n_jobs=-1)
+            grid = GridSearchCV(
+                mod, mc["params"], cv=CV,
+                scoring="accuracy", n_jobs=-1
+            )
             grid.fit(X_train, y_train)
 
             acc = accuracy_score(y_test, grid.predict(X_test))
@@ -132,16 +163,20 @@ def train_one(prefix, train_path, test_path, label_col):
             if acc > best_acc:
                 best_acc, best_mod, best_name = acc, grid.best_estimator_, name
 
-        # Save the model
+        # Save best model
         model_path = Path("models") / f"{prefix}_best.pkl"
         joblib.dump(best_mod, model_path)
         mlflow.sklearn.log_model(best_mod, f"{prefix}_model")
 
+        # ✅ Save preprocessing artifacts here (train_model owns models/)
+        if prefix == "imdb":
+            joblib.dump(imdb_vectorizer, "models/imdb_vectorizer.pkl")
+        if prefix == "heart":
+            joblib.dump(heart_scaler, "models/heart_scaler.pkl")
+
         print(f"{prefix.upper()} best → {best_name} ({best_acc:.4f})")
 
-        # -------------------------------------------------
-        # NEW: Save required DVC metric file
-        # -------------------------------------------------
+        # Metrics
         metric_file = f"metrics/{prefix}_metrics.json"
         json.dump({
             "dataset": prefix,
@@ -149,14 +184,12 @@ def train_one(prefix, train_path, test_path, label_col):
             "accuracy": float(best_acc)
         }, open(metric_file, "w"), indent=4)
 
-        # Also create main train_metrics.json (required by your DVC stage)
         json.dump({
             prefix: {
                 "best_model": best_name,
                 "accuracy": float(best_acc)
             }
         }, open("metrics/train_metrics.json", "w"), indent=4)
-
 
 # -------------------------------------------------
 # RUN BOTH MODELS
