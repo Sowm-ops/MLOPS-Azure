@@ -20,7 +20,6 @@ pipeline {
         stage('Setup Python Environment') {
             steps {
                 bat '''
-                echo Creating virtual environment...
                 python -m venv "%VENV_DIR%"
                 call "%VENV_DIR%\\Scripts\\activate"
 
@@ -52,12 +51,7 @@ pipeline {
             steps {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
-                python - <<EOF
-        import nltk
-        nltk.download('punkt')
-        nltk.download('punkt_tab')
-        nltk.download('stopwords')
-        EOF
+                python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords')"
                 '''
             }
         }
@@ -86,8 +80,6 @@ pipeline {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
                 set PYTHONPATH=%WORKSPACE%
-                python src/data_prep.py
-                python src/train.py
                 dvc repro
                 '''
             }
@@ -114,9 +106,7 @@ pipeline {
 
         stage('Archive Metrics') {
             steps {
-                archiveArtifacts artifacts: 'metrics/**',
-                                 fingerprint: true,
-                                 allowEmptyArchive: true
+                archiveArtifacts artifacts: 'metrics/**', allowEmptyArchive: true
             }
         }
     }
