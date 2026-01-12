@@ -56,7 +56,7 @@ jobs:
       run: dvc remote modify azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
 
     - name: DVC Pull
-      run: dvc pull -v --force || echo "No cache yet."
+      run: dvc pull -r azure --force -v || echo "No cache yet."
 
     - name: Download NLTK Data
       run: |
@@ -82,7 +82,7 @@ jobs:
       run: pytest tests/post -q
 
     - name: Push updated artifacts
-      run: dvc push -v
+      run: dvc push -r azure -v
 
     - name: Commit updated pipeline files
       run: |
@@ -119,7 +119,7 @@ jobs:
         dvc remote modify azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
 
     - name: DVC Pull Models
-      run: dvc pull -v
+      run: dvc pull -r azure --force -v
 
     - name: Azure Login
       uses: azure/login@v2
