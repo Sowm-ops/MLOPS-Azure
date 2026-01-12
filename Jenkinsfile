@@ -48,6 +48,20 @@ pipeline {
             }
         }
 
+        stage('Download NLTK Data') {
+            steps {
+                bat '''
+                call "%VENV_DIR%\\Scripts\\activate"
+                python - <<EOF
+        import nltk
+        nltk.download('punkt')
+        nltk.download('punkt_tab')
+        nltk.download('stopwords')
+        EOF
+                '''
+            }
+        }
+
         stage('DVC Pull') {
             steps {
                 bat '''
