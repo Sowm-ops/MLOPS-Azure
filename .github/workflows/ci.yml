@@ -69,18 +69,17 @@ jobs:
         nltk.download('omw-1.4')
         EOF
 
-    - name: Run PyTest
-      run: pytest -q
-
-    - name: Stop if tests fail
-      if: failure()
-      run: exit 1
+    - name: Run Pre-Training Tests
+      run: pytest tests/pre -q
 
     - name: Run Training Pipeline
       run: |
         python src/data_prep.py
         python src/train.py
         dvc repro
+
+    - name: Run Post-Training Tests
+      run: pytest tests/post -q
 
     - name: Push updated artifacts
       run: dvc push -v
