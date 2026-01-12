@@ -89,29 +89,46 @@ jobs:
       run: |
         git config --global user.name "github-actions"
         git config --global user.email "github-actions@github.com"
-        git add .
+        git add dvc.lock metrics/
         git commit -m "Auto update: training + dvc artifacts" || echo "No changes"
         git push
 
   ########################################################
-  #  BUILD DOCKER IMAGE AND PUSH TO ACR
+  #  BUILD DOCKER IMAGE (PULL MODELS FROM DVC)
   ########################################################
   build:
     needs: train
     runs-on: ubuntu-latest
 
+    env:
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
     steps:
-    - name: Checkout code
+    - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Azure login
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.10"
+
+    - name: Install DVC
+      run: pip install dvc[azure]
+
+    - name: Configure DVC Remote
+      run: |
+        dvc remote modify azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
+
+    - name: DVC Pull Models
+      run: dvc pull -v
+
+    - name: Azure Login
       uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Azure CLI - Login to ACR
-      run: |
-        az acr login --name ${{ secrets.AZURE_REGISTRY_NAME }}
+    - name: Login to Azure Container Registry
+      run: az acr login --name ${{ secrets.AZURE_REGISTRY_NAME }}
 
     - name: Build and Push Docker Image
       run: |
@@ -121,14 +138,13 @@ jobs:
         docker push $IMAGE_NAME
 
   ########################################################
-  #  DEPLOY NEW IMAGE TO AZURE CONTAINER APPS
+  #  DEPLOY TO AZURE CONTAINER APPS
   ########################################################
   deploy:
     needs: build
     runs-on: ubuntu-latest
 
     steps:
-
     - name: Azure Login
       uses: azure/login@v2
       with:
