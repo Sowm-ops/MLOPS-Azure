@@ -60,11 +60,31 @@ pipeline {
             }
         }
 
-        stage('DVC Pull (safe)') {
+        stage('DVC Pull (First-Run Logic)') {
             steps {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
-                dvc pull --force || echo "No cache yet (expected on first run)"
+
+                echo Checking remote 'azurejenkins' status...
+
+                REM 1. Check if the remote is configured
+                dvc remote list | findstr "azurejenkins" >nul
+                IF %ERRORLEVEL% NEQ 0 (
+                    echo ERROR: Remote 'azurejenkins' not found in config!
+                    exit /b 1
+                )
+
+                REM 2. Check if the remote has ANY data (the /files/md5 folder)
+                REM We try to list the remote. If it's totally empty, dvc list returns error 1.
+                dvc list . --remote azurejenkins >nul 2>&1
+
+                IF %ERRORLEVEL% NEQ 0 (
+                    echo "Detected EMPTY remote. This must be the first run. Skipping pull..."
+                ) ELSE (
+                    echo "Remote has data. Attempting sync..."
+                    REM If this fails now, the whole stage fails (exit code 1)
+                    dvc pull -r azurejenkins
+                )
                 '''
             }
         }
