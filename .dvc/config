@@ -2,6 +2,5 @@
     remote = azurejenkins
 ['remote "azure"']
     url = azure://dvcstore
-    connection_string = DefaultEndpointsProtocol=https;AccountName=mlopsgithubaccount;AccountKey=Kb1mENPQafqSQ0jZJbJfmqXpQEN6y3Bzmyv2rxhoTmfyB9kpi4lCMaHAdEvYBhM7dnvBu4BSyc9g+ASttn3qHQ==;EndpointSuffix=core.windows.net
 ['remote "azurejenkins"']
     url = azure://dvc-jenkins
