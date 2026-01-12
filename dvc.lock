@@ -17,8 +17,8 @@ stages:
       size: 793
     - path: src/data_prep.py
       hash: md5
-      md5: 0cee961c38681d8da32d68a7d37fbeac
-      size: 5234
+      md5: 51e3a01de20546fdaa2dbd7560e570a7
+      size: 5228
     outs:
     - path: data/heart_test.csv
       hash: md5
@@ -115,6 +115,6 @@ stages:
       size: 92
     - path: models/
       hash: md5
-      md5: b2237d3189396f0c8e806e3cc2d1445b.dir
+      md5: 85d6efdcb646fc705e25566e957330de.dir
       size: 97960
       nfiles: 4
