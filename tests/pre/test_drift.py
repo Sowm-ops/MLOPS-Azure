@@ -1,7 +1,8 @@
 import pandas as pd
 
-from evidently.report import Report
+from evidently import Report
 from evidently.metric_preset import DataDriftPreset
+
 
 def test_imdb_drift():
     train = pd.read_csv("data/imdb_train.csv")
