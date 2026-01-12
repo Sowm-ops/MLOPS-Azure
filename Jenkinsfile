@@ -8,7 +8,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout') {
             steps {
                 checkout scm
@@ -18,7 +17,7 @@ pipeline {
         stage('Setup Python Environment') {
             steps {
                 bat '''
-                python -m venv "%VENV_DIR%"
+                if not exist "%VENV_DIR%" python -m venv "%VENV_DIR%"
                 call "%VENV_DIR%\\Scripts\\activate"
 
                 python -m pip install --upgrade pip
@@ -30,7 +29,7 @@ pipeline {
             }
         }
 
-        stage('Configure DVC Remote (Jenkins only)') {
+        stage('Configure DVC Remote') {
             steps {
                 withCredentials([
                     string(credentialsId: 'AZURE_STORAGE_ACCOUNT_JENKINS', variable: 'AZURE_ACCOUNT'),
@@ -39,7 +38,7 @@ pipeline {
                     bat '''
                     call "%VENV_DIR%\\Scripts\\activate"
 
-                    dvc remote remove azurejenkins || echo "No existing Jenkins remote"
+                    REM Force refresh the remote configuration
                     dvc remote add -f azurejenkins azure://dvc-jenkins
                     dvc remote modify --local azurejenkins account_name "%AZURE_ACCOUNT%"
                     dvc remote modify --local azurejenkins account_key "%AZURE_KEY%"
@@ -60,32 +59,29 @@ pipeline {
             }
         }
 
-        stage('DVC Pull (First-Run Logic)') {
+        stage('DVC Pull (Smart Sync)') {
             steps {
-                bat '''
-                call "%VENV_DIR%\\Scripts\\activate"
+                withCredentials([
+                    string(credentialsId: 'AZURE_STORAGE_ACCOUNT_JENKINS', variable: 'AZURE_ACCOUNT'),
+                    string(credentialsId: 'AZURE_STORAGE_KEY_JENKINS', variable: 'AZURE_KEY')
+                ]) {
+                    bat '''
+                    call "%VENV_DIR%\\Scripts\\activate"
 
-                echo Checking remote 'azurejenkins' status...
+                    echo Checking remote 'azurejenkins' status...
 
-                REM 1. Check if the remote is configured
-                dvc remote list | findstr "azurejenkins" >nul
-                IF %ERRORLEVEL% NEQ 0 (
-                    echo ERROR: Remote 'azurejenkins' not found in config!
-                    exit /b 1
-                )
+                    REM Check if the remote has ANY data. 
+                    REM 'dvc list' fails (exit 1) if the remote is empty/new.
+                    dvc list . --remote azurejenkins >nul 2>&1
 
-                REM 2. Check if the remote has ANY data (the /files/md5 folder)
-                REM We try to list the remote. If it's totally empty, dvc list returns error 1.
-                dvc list . --remote azurejenkins >nul 2>&1
-
-                IF %ERRORLEVEL% NEQ 0 (
-                    echo "Detected EMPTY remote. This must be the first run. Skipping pull..."
-                ) ELSE (
-                    echo "Remote has data. Attempting sync..."
-                    REM If this fails now, the whole stage fails (exit code 1)
-                    dvc pull -r azurejenkins
-                )
-                '''
+                    IF %ERRORLEVEL% NEQ 0 (
+                        echo [INFO] Detected EMPTY remote. This is likely the first run. Skipping pull...
+                    ) ELSE (
+                        echo [INFO] Remote data found. Syncing...
+                        dvc pull -r azurejenkins
+                    )
+                    '''
+                }
             }
         }
 
@@ -104,7 +100,8 @@ pipeline {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
                 set PYTHONPATH=%WORKSPACE%
-
+                
+                REM dvc repro runs the pipeline and generates the models/ folder
                 dvc repro
                 '''
             }
@@ -122,10 +119,16 @@ pipeline {
 
         stage('DVC Push') {
             steps {
-                bat '''
-                call "%VENV_DIR%\\Scripts\\activate"
-                dvc push
-                '''
+                withCredentials([
+                    string(credentialsId: 'AZURE_STORAGE_ACCOUNT_JENKINS', variable: 'AZURE_ACCOUNT'),
+                    string(credentialsId: 'AZURE_STORAGE_KEY_JENKINS', variable: 'AZURE_KEY')
+                ]) {
+                    bat '''
+                    call "%VENV_DIR%\\Scripts\\activate"
+                    echo Pushing new data/models to Azure...
+                    dvc push
+                    '''
+                }
             }
         }
 
@@ -133,6 +136,15 @@ pipeline {
             steps {
                 archiveArtifacts artifacts: 'metrics/**', fingerprint: true, allowEmptyArchive: true
             }
+        }
+    }
+
+    post {
+        always {
+            echo "Pipeline finished."
+        }
+        failure {
+            echo "Pipeline failed. Check logs for DVC or Test errors."
         }
     }
 }
