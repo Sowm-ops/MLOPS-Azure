@@ -37,15 +37,22 @@ pipeline {
                 bat '''
                 call "%VENV_DIR%\\Scripts\\activate"
 
-                dvc remote add -f azurejenkins azure://dvc-jenkins/
-                dvc remote modify --local azurejenkins account_name "%AZURE_STORAGE_ACCOUNT%"
-                dvc remote modify --local azurejenkins account_key "%AZURE_STORAGE_KEY%"
+                REM Clean slate (safe in CI)
+                dvc remote remove azurejenkins || echo "No existing Jenkins remote"
+
+                REM Add remote WITH URL
+                dvc remote add azurejenkins azure://dvc-jenkins/
+                dvc remote modify --local azurejenkins account_name "%AZURE_STORAGE_ACCOUNT_JENKINS%"
+                dvc remote modify --local azurejenkins account_key "%AZURE_STORAGE_KEY_JENKINS%"
                 dvc remote default azurejenkins
 
+                REM Verify
                 dvc remote list
+                dvc config --list
                 '''
             }
         }
+
 
         stage('Download NLTK Data') {
             steps {
