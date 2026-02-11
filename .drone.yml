@@ -22,20 +22,20 @@ steps:
       AZURE_CONTAINER:
         from_secret: azure_drone_container
     commands:
-      - python -V
-      - pip install --upgrade pip
-      - pip install -r requirements.txt
-      - pip install "dvc[azure]" pytest evidently==0.4.32
-      - dvc remote modify azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
-      - dvc remote modify azure container_name "$AZURE_CONTAINER"
-      - dvc pull -r azure --force -v || echo "No cache yet."
-      - python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('omw-1.4')"
-      - pytest tests/pre -q
-      - python src/data_prep.py
-      - python src/train.py
-      - dvc repro
-      - pytest tests/post -q
-      - dvc push -r azure -v
+      - "python -V"
+      - "pip install --upgrade pip"
+      - "pip install -r requirements.txt"
+      - "pip install \"dvc[azure]\" pytest evidently==0.4.32"
+      - "dvc remote modify azure connection_string \"$AZURE_STORAGE_CONNECTION_STRING\""
+      - "dvc remote modify azure container_name \"$AZURE_CONTAINER\""
+      - "sh -lc 'dvc pull -r azure --force -v || echo \"No cache yet.\"'"
+      - "python -c \"import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('omw-1.4')\""
+      - "pytest tests/pre -q"
+      - "python src/data_prep.py"
+      - "python src/train.py"
+      - "dvc repro"
+      - "pytest tests/post -q"
+      - "dvc push -r azure -v"
 
   - name: build-api-image
     image: docker:24
@@ -53,25 +53,25 @@ steps:
       AZURE_CREDENTIALS:
         from_secret: azure_drone_credentials
     commands:
-      - apk add --no-cache bash curl python3 py3-pip jq git azure-cli
-      - pip3 install "dvc[azure]"
-      - dvc remote modify azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
-      - dvc remote modify azure container_name "$AZURE_CONTAINER"
-      - dvc pull -r azure --force -v
-      - echo "$AZURE_CREDENTIALS" > /tmp/azure.json
-      - export AZURE_CLIENT_ID=$(jq -r .clientId /tmp/azure.json)
-      - export AZURE_CLIENT_SECRET=$(jq -r .clientSecret /tmp/azure.json)
-      - export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)
-      - export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)
-      - test -n "$AZURE_SUBSCRIPTION_ID" && test "$AZURE_SUBSCRIPTION_ID" != "null"
-      - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
-      - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-      - az acr login --name "$AZURE_REGISTRY_NAME"
-      - export IMAGE_NAME=${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}
-      - echo "Building: $IMAGE_NAME"
-      - docker version
-      - docker build -t "$IMAGE_NAME" .
-      - docker push "$IMAGE_NAME"
+      - "apk add --no-cache bash curl python3 py3-pip jq git azure-cli"
+      - "pip3 install \"dvc[azure]\""
+      - "dvc remote modify azure connection_string \"$AZURE_STORAGE_CONNECTION_STRING\""
+      - "dvc remote modify azure container_name \"$AZURE_CONTAINER\""
+      - "dvc pull -r azure --force -v"
+      - "echo \"$AZURE_CREDENTIALS\" > /tmp/azure.json"
+      - "export AZURE_CLIENT_ID=$(jq -r .clientId /tmp/azure.json)"
+      - "export AZURE_CLIENT_SECRET=$(jq -r .clientSecret /tmp/azure.json)"
+      - "export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)"
+      - "export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)"
+      - "sh -lc 'if [ -z \"$AZURE_SUBSCRIPTION_ID\" ] || [ \"$AZURE_SUBSCRIPTION_ID\" = \"null\" ]; then echo \"ERROR: subscriptionId is null/empty\"; exit 1; fi'"
+      - "az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\""
+      - "az account set --subscription \"$AZURE_SUBSCRIPTION_ID\""
+      - "az acr login --name \"$AZURE_REGISTRY_NAME\""
+      - "export IMAGE_NAME=${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
+      - "echo \"$IMAGE_NAME\""
+      - "docker version"
+      - "docker build -t \"$IMAGE_NAME\" ."
+      - "docker push \"$IMAGE_NAME\""
 
   - name: deploy-to-aca
     image: mcr.microsoft.com/azure-cli:2.60.0
@@ -85,15 +85,15 @@ steps:
       AZURE_RESOURCE_GROUP:
         from_secret: azure_drone_resource_group
     commands:
-      - apt-get update && apt-get install -y jq
-      - echo "$AZURE_CREDENTIALS" > /tmp/azure.json
-      - export AZURE_CLIENT_ID=$(jq -r .clientId /tmp/azure.json)
-      - export AZURE_CLIENT_SECRET=$(jq -r .clientSecret /tmp/azure.json)
-      - export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)
-      - export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)
-      - test -n "$AZURE_SUBSCRIPTION_ID" && test "$AZURE_SUBSCRIPTION_ID" != "null"
-      - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
-      - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-      - export IMAGE_NAME=${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}
-      - echo "Deploying: $IMAGE_NAME"
-      - az containerapp update --name "$AZURE_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --image "$IMAGE_NAME"
+      - "apt-get update && apt-get install -y jq"
+      - "echo \"$AZURE_CREDENTIALS\" > /tmp/azure.json"
+      - "export AZURE_CLIENT_ID=$(jq -r .clientId /tmp/azure.json)"
+      - "export AZURE_CLIENT_SECRET=$(jq -r .clientSecret /tmp/azure.json)"
+      - "export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)"
+      - "export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)"
+      - "sh -lc 'if [ -z \"$AZURE_SUBSCRIPTION_ID\" ] || [ \"$AZURE_SUBSCRIPTION_ID\" = \"null\" ]; then echo \"ERROR: subscriptionId is null/empty\"; exit 1; fi'"
+      - "az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\""
+      - "az account set --subscription \"$AZURE_SUBSCRIPTION_ID\""
+      - "export IMAGE_NAME=${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
+      - "echo \"$IMAGE_NAME\""
+      - "az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\""
