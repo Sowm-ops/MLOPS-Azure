@@ -1,32 +1,31 @@
-# 1. Version Control & CI/CD Config
-.git/
-.github/
+# Git / CI metadata
+.git
+.github
 .drone.yml
 Jenkinsfile
 docker-compose.yml
-.gitignore
-.dockerignore
 
-# 2. MLOps / DVC (Very Important!)
-# We only want the trained .pkl models, NOT the raw data or DVC internal logs
-.dvc/
-data/
-!models/*.pkl
-
-# 3. Python Artifacts
-__pycache__/
+# Python cache / venv
+__pycache__
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
-venv/
-.env
-.pytest_cache/
+.pytest_cache
 .coverage
-htmlcov/
+htmlcov
+env
+venv
+.venv
 
-# 4. Notebooks & Documentation
-notebooks/
-docs/
-*.md
+# DVC internals not needed in image
+.dvc/cache
+.dvc/tmp
+
+# Usually not needed inside the API image (DVC pulls artifacts during CI)
+data
+
+# Notebooks/docs
+notebooks
+docs
+
+# OS junk
+.DS_Store

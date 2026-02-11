@@ -1,26 +1,22 @@
 version: '3.8'
 
 services:
-  # THE BRAIN: Manages the dashboard and GitHub OAuth
   drone-server:
     image: drone/drone:2
     container_name: drone-server
     ports:
-      - "8081:80" # Maps local port 8081 to container port 80
+      - "8081:80"
     volumes:
-      - ./drone_data:/data # Stores your build history and settings locally
+      - ./drone_data:/data
     restart: always
     environment:
-      - DRONE_GITHUB_CLIENT_ID=${DRONE_GITHUB_CLIENT_ID}
-      - DRONE_GITHUB_CLIENT_SECRET=${DRONE_GITHUB_CLIENT_SECRET}
-      - DRONE_RPC_SECRET=${DRONE_RPC_SECRET}
-      # CHANGE THESE TWO LINES TO USE VARIABLES:
-      - DRONE_SERVER_HOST=${DRONE_SERVER_HOST}
-      - DRONE_SERVER_PROTO=${DRONE_SERVER_PROTO}
-      # PUT YOUR ACTUAL GITHUB USERNAME HERE:
-      - DRONE_USER_CREATE=username:sowmyamaddineni,admin:true
+      DRONE_GITHUB_CLIENT_ID: ${DRONE_GITHUB_CLIENT_ID}
+      DRONE_GITHUB_CLIENT_SECRET: ${DRONE_GITHUB_CLIENT_SECRET}
+      DRONE_RPC_SECRET: ${DRONE_RPC_SECRET}
+      DRONE_SERVER_HOST: ${DRONE_SERVER_HOST}
+      DRONE_SERVER_PROTO: ${DRONE_SERVER_PROTO}
+      DRONE_USER_CREATE: username:${DRONE_ADMIN_USER},admin:true
 
-  # THE WORKER: Executes your .drone.yml steps
   drone-runner:
     image: drone/drone-runner-docker:1
     container_name: drone-runner
@@ -28,10 +24,10 @@ services:
     depends_on:
       - drone-server
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock # Essential for building images
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - DRONE_RPC_HOST=drone-server
-      - DRONE_RPC_PROTO=http
-      - DRONE_RPC_SECRET=${DRONE_RPC_SECRET} # Must match the server!
-      - DRONE_RUNNER_CAPACITY=2 # Allows 2 builds at once
-      - DRONE_RUNNER_NAME=laptop-runner
+      DRONE_RPC_HOST: drone-server
+      DRONE_RPC_PROTO: http
+      DRONE_RPC_SECRET: ${DRONE_RPC_SECRET}
+      DRONE_RUNNER_CAPACITY: 2
+      DRONE_RUNNER_NAME: laptop-runner
