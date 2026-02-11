@@ -24,3 +24,5 @@ Thumbs.db
 /models
 /IMDB Dataset.csv
 /heart.csv
+.env
+drone_data/
