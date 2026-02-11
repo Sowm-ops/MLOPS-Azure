@@ -8,7 +8,19 @@ trigger:
   event:
     - push
 
+environment:
+  DOCKER_API_VERSION: "1.43"
+
+clone:
+  disable: true
+
 steps:
+  - name: clone
+    image: alpine/git:2.45.2
+    commands:
+      - git clone --depth=50 --branch "$DRONE_BRANCH" "$DRONE_REMOTE_URL" .
+      - git checkout "$DRONE_COMMIT"
+
   - name: train-and-version
     image: python:3.10-slim
     environment:
@@ -33,9 +45,8 @@ steps:
       - "dvc push -r azure -v"
 
   - name: build-api-image
-    image: mcr.microsoft.com/azure-cli:2.60.0
+    image: docker:24
     environment:
-      DOCKER_API_VERSION: "1.43"
       AZURE_STORAGE_CONNECTION_STRING:
         from_secret: azure_drone_storage_connection_string
       AZURE_CONTAINER:
@@ -45,7 +56,7 @@ steps:
       AZURE_CREDENTIALS:
         from_secret: azure_drone_credentials
     commands:
-      - "apt-get update && apt-get install -y jq python3 python3-pip git docker.io"
+      - "apk add --no-cache bash curl python3 py3-pip jq git"
       - "pip3 install \"dvc[azure]\""
       - "dvc remote modify azure connection_string \"$AZURE_STORAGE_CONNECTION_STRING\""
       - "dvc remote modify azure container_name \"$AZURE_CONTAINER\""
@@ -56,15 +67,18 @@ steps:
       - "export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)"
       - "export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)"
       - "sh -lc 'if [ -z \"$AZURE_SUBSCRIPTION_ID\" ] || [ \"$AZURE_SUBSCRIPTION_ID\" = \"null\" ]; then echo \"ERROR: subscriptionId is null/empty\"; exit 1; fi'"
-      - "az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\""
-      - "az account set --subscription \"$AZURE_SUBSCRIPTION_ID\""
-      - "az acr login --name \"$AZURE_REGISTRY_NAME\""
+
+      # Install Azure CLI in Alpine reliably (MS repo method is painful on Alpine)
+      # So we login to ACR using admin user (since your ACR shows Admin Enabled True)
       - "export IMAGE_NAME=${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
       - "echo \"Building $IMAGE_NAME\""
       - "docker version"
       - "docker build -t \"$IMAGE_NAME\" ."
-      - "docker push \"$IMAGE_NAME\""
 
+      # Login using ACR admin (needs two new secrets)
+      - "echo \"If this fails, add ACR_USERNAME + ACR_PASSWORD secrets\""
+      - "docker login ${AZURE_REGISTRY_NAME}.azurecr.io -u \"$ACR_USERNAME\" -p \"$ACR_PASSWORD\""
+      - "docker push \"$IMAGE_NAME\""
 
   - name: deploy-to-aca
     image: mcr.microsoft.com/azure-cli:2.60.0
@@ -88,5 +102,4 @@ steps:
       - "az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\""
       - "az account set --subscription \"$AZURE_SUBSCRIPTION_ID\""
       - "export IMAGE_NAME=${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
-      - "echo \"$IMAGE_NAME\""
       - "az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\""

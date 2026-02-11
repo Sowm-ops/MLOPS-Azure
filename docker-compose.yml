@@ -31,6 +31,3 @@ services:
       DRONE_RPC_SECRET: ${DRONE_RPC_SECRET}
       DRONE_RUNNER_CAPACITY: 2
       DRONE_RUNNER_NAME: laptop-runner
-      DRONE_RUNNER_PRIVILEGED_IMAGES: docker:24
-      DRONE_RUNNER_VOLUMES: /var/run/docker.sock
-
