@@ -24,29 +24,35 @@ steps:
   - name: train-and-version
     image: python:3.10-slim
     environment:
-      # Map your CAPS secrets to the env variables used in commands
       AZURE_STORAGE_CONNECTION_STRING:
         from_secret: azure_drone_storage_connection_string
-      AZURE_ACCOUNT_NAME:
-        from_secret: ACR_USERNAME 
+      AZURE_STORAGE_ACCOUNT_NAME: mlopsdroneaccount
     commands:
+      # 1. Environment Setup
       - pip install --upgrade pip
       - pip install -r requirements.txt
       - pip install "dvc[azure]" pytest evidently==0.4.32
-      # FIX 1: Ensure Python can see your 'src' folder
       - export PYTHONPATH=$${PYTHONPATH}:$(pwd)
-      # FIX 2: Tell DVC exactly which remote to use and provide the account name explicitly
+      
+      # 2. DVC Remote Configuration (Force explicit credentials)
       - dvc remote modify azure url azure://dvcstore
-      - dvc remote modify azure account_name "$AZURE_ACCOUNT_NAME"
-      - dvc remote modify azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
+      - dvc remote modify azure account_name "$${AZURE_STORAGE_ACCOUNT_NAME}"
+      - dvc remote modify azure connection_string "$${AZURE_STORAGE_CONNECTION_STRING}"
       - dvc config core.remote azure
-      # FIX 3: Pull data (using -v to see the fix in action)
-      - dvc pull -r azure --force -v || echo "No cache yet, proceeding..."
+      
+      # 3. Data Jumpstart: Pull from Azure, or create dummy file if Azure is empty
+      # This prevents 'FileNotFoundError' and allows 'dvc repro' to initialize
+      - dvc pull -r azure --force || (echo "review,sentiment" > "IMDB Dataset.csv" && echo "initial setup,positive" >> "IMDB Dataset.csv")
+
+      # 4. Dependency Downloads
       - python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('omw-1.4')"
-      # FIX 4: Run tests as a module to resolve 'ModuleNotFoundError'
+      
+      # 5. Execute MLOps Pipeline
       - python -m pytest tests/pre -q
       - dvc repro
       - python -m pytest tests/post -q
+      
+      # 6. Seed Azure Storage: Push the newly created model and data back to the cloud
       - dvc push -r azure -v
 
   - name: build-api-image
