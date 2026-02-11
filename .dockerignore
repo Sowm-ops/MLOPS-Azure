@@ -1,0 +1,32 @@
+# 1. Version Control & CI/CD Config
+.git/
+.github/
+.drone.yml
+Jenkinsfile
+docker-compose.yml
+.gitignore
+.dockerignore
+
+# 2. MLOps / DVC (Very Important!)
+# We only want the trained .pkl models, NOT the raw data or DVC internal logs
+.dvc/
+data/
+!models/*.pkl
+
+# 3. Python Artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 4. Notebooks & Documentation
+notebooks/
+docs/
+*.md

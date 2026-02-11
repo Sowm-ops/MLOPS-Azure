@@ -1,0 +1,70 @@
+kind: pipeline
+type: docker
+name: imdb-mlops-reproducibility
+
+steps:
+  # 1. TRAINING: DVC Pull + Train + Push Data
+  - name: train-and-version
+    image: python:3.10
+    environment:
+      AZURE_STORAGE_CONNECTION_STRING:
+        from_secret: azure_storage_connection_string
+      PYTHONPATH: .
+    commands:
+      - pip install -r requirements.txt
+      - pip install dvc[azure] pytest evidently==0.4.32
+      # Configure DVC and Pull
+      - dvc remote modify azure connection_string $AZURE_STORAGE_CONNECTION_STRING
+      - dvc pull -r azure --force || echo "No cache yet."
+      # NLTK Downloads
+      - python -m nltk.downloader punkt punkt_tab stopwords wordnet omw-1.4
+      # Run Pre-Tests, Train, and Post-Tests
+      - pytest tests/pre -q
+      - python src/data_prep.py
+      - python src/train.py
+      - dvc repro
+      - pytest tests/post -q
+      - dvc push -r azure
+
+  # 2. METADATA: Push DVC lock back to GitHub (Replaces 'Commit updated pipeline files')
+  - name: update-git-metadata
+    image: appleboy/drone-git-push
+    settings:
+      branch: main
+      remote_name: origin
+      commit: true
+      commit_message: "Auto-update DVC artifacts [skip ci]"
+      author_name: "Drone CI Bot"
+    when:
+      status: [ success ]
+
+  # 3. BUILD: Containerize the Model (Replaces Docker Build & ACR Login)
+  - name: build-api-image
+    image: plugins/acr
+    settings:
+      registry: mlopsacr123.azurecr.io
+      repo: mlops-api
+      json_key:
+        from_secret: azure_credentials
+      tags:
+        - latest
+        - v${DRONE_BUILD_NUMBER}
+
+  # 4. DEPLOY: Update the Azure Container App
+  - name: deploy-to-aca
+    image: microsoft/azure-cli
+    environment:
+      AZURE_CREDENTIALS:
+        from_secret: azure_credentials
+    commands:
+      - CLIENT_ID=$(echo $AZURE_CREDENTIALS | jq -r .clientId)
+      - CLIENT_SECRET=$(echo $AZURE_CREDENTIALS | jq -r .clientSecret)
+      - TENANT_ID=$(echo $AZURE_CREDENTIALS | jq -r .tenantId)
+      - az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+      - az containerapp update --name imdb-sentiment-app --resource-group imdb-rg --image mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}
+
+trigger:
+  branch:
+    - main
+  event:
+    - push
