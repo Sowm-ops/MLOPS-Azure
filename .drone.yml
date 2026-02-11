@@ -46,12 +46,13 @@ steps:
       # 4. Improved Jumpstart (Fixed "Least Populated Class" error)
       - |
         dvc pull -r azure --force || {
-          echo "review,sentiment" > "IMDB Dataset.csv"
-          for i in {1..100}; do
-            echo "this movie was great and the acting was amazing fantastic,positive" >> "IMDB Dataset.csv"
-            echo "this film was terrible and the plot was boring awful,negative" >> "IMDB Dataset.csv"
-          done
-          echo "Jumpstart data initialized with 200 rows."
+          python -c "
+        import pandas as pd
+        data = {'review': ['great movie fantastic acting'] * 100 + ['terrible film boring plot'] * 100,
+                'sentiment': ['positive'] * 100 + ['negative'] * 100}
+        pd.DataFrame(data).to_csv('IMDB Dataset.csv', index=False)
+        "
+          echo "Jumpstart data initialized with 200 balanced rows."
         }
 
       # 5. NLP Assets
