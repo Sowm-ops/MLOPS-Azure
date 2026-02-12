@@ -69,18 +69,18 @@ steps:
   - name: step-3-docker-image-packaging
     image: plugins/docker
     settings:
-      registry: ${AZURE_REGISTRY_NAME}.azurecr.io
-      repo: ${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api
-      tags: v${DRONE_BUILD_NUMBER}
+      registry: mlopsacr123.azurecr.io
+      repo: mlopsacr123.azurecr.io/mlops-api
+      tags:
+        - v${DRONE_BUILD_NUMBER}
       username:
         from_secret: ACR_USERNAME
       password:
         from_secret: ACR_PASSWORD
     environment:
-      # This fixes the "client version too old/new" error
-      DOCKER_API_VERSION: "1.41" 
       AZURE_REGISTRY_NAME:
         from_secret: azure_drone_registry_name
+
 
   - name: step-4-azure-app-deployment
     image: mcr.microsoft.com/azure-cli:2.60.0
