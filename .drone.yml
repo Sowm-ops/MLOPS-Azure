@@ -81,12 +81,14 @@ steps:
       ACR_PASSWORD:
         from_secret: ACR_PASSWORD
     commands:
-      - "sh -lc 'test -n \"$AZURE_REGISTRY_NAME\" || (echo \"AZURE_REGISTRY_NAME is empty. Fix secret: azure_drone_registry_name\" && exit 1)'"
+      - "sh -lc 'REG=${AZURE_REGISTRY_NAME:-mlopsacr123}; echo \"$REG\" > /tmp/REG'"
+      - "sh -lc 'REG=$(cat /tmp/REG); echo \"Using registry: ${REG}.azurecr.io\"'"
       - "sh -lc 'test -n \"$ACR_USERNAME\" || (echo \"ACR_USERNAME is empty. Fix secret: ACR_USERNAME\" && exit 1)'"
       - "sh -lc 'test -n \"$ACR_PASSWORD\" || (echo \"ACR_PASSWORD is empty. Fix secret: ACR_PASSWORD\" && exit 1)'"
-      - "echo Using registry: ${AZURE_REGISTRY_NAME}.azurecr.io"
-      - "echo \"$ACR_PASSWORD\" | docker login \"${AZURE_REGISTRY_NAME}.azurecr.io\" -u \"$ACR_USERNAME\" --password-stdin"
-      - "sh -lc 'export IMAGE_NAME=\"${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\" && echo \"Building $IMAGE_NAME\" && docker build -t \"$IMAGE_NAME\" . && docker push \"$IMAGE_NAME\"'"
+      - "sh -lc 'REG=$(cat /tmp/REG); echo \"$ACR_PASSWORD\" | docker login \"${REG}.azurecr.io\" -u \"$ACR_USERNAME\" --password-stdin'"
+      - "sh -lc 'REG=$(cat /tmp/REG); IMAGE_NAME=\"${REG}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\"; echo \"Building $IMAGE_NAME\"'"
+      - "sh -lc 'REG=$(cat /tmp/REG); IMAGE_NAME=\"${REG}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\"; docker build -t \"$IMAGE_NAME\" .'"
+      - "sh -lc 'REG=$(cat /tmp/REG); IMAGE_NAME=\"${REG}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\"; docker push \"$IMAGE_NAME\"'"
 
 
 
