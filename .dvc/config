@@ -1,5 +1,5 @@
 [core]
-    remote = azurejenkins
+    remote = azuredrone
 ['remote "azure"']
     url = azure://dvcstore
 ['remote "azurejenkins"']

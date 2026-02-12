@@ -73,10 +73,12 @@ steps:
       repo: ${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api
       tags: v${DRONE_BUILD_NUMBER}
       username:
-        from_secret: acr_username
+        from_secret: ACR_USERNAME
       password:
-        from_secret: acr_password
+        from_secret: ACR_PASSWORD
     environment:
+      # This fixes the "client version too old/new" error
+      DOCKER_API_VERSION: "1.41" 
       AZURE_REGISTRY_NAME:
         from_secret: azure_drone_registry_name
 
