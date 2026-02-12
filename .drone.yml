@@ -33,43 +33,25 @@ steps:
       - pip install "dvc[azure]" pytest evidently==0.4.32
       - export PYTHONPATH=$${PYTHONPATH}:$(pwd)
       
-      # 2. DVC Config
+      # 2. Configure DVC (Using 'azure' as the name inside Drone)
       - dvc remote modify azure url azure://dvcstore
       - dvc remote modify azure connection_string "$${AZURE_STORAGE_CONNECTION_STRING}"
       - dvc config core.remote azure
 
-      # 3. Clean Ghost Dependencies (Fixed Syntax)
-      # We remove the target so DVC stops looking for heart.csv
-      - dvc remove heart.csv.dvc || true
-      - rm -f heart.csv
-      
+      # 3. Pull Real Data
+      # This will now download the 7 files you just pushed!
+      - dvc pull -r azure --force
 
-      # 4. Final Jumpstart (Diversified text to fill 1500 TF-IDF features)
-      - |
-        dvc pull -r azure --force || {
-          python -c "
-        import pandas as pd
-        import random
-        # Create 300 rows with random word combinations to ensure vocabulary > 1500
-        words = ['great', 'movie', 'fantastic', 'acting', 'terrible', 'plot', 'boring', 'amazing', 'awful', 'masterpiece', 'story', 'waste', 'time', 'love', 'hate', 'best', 'worst']
-        reviews = [' '.join(random.choices(words, k=20)) + f' unique_{i}' for i in range(300)]
-        sentiments = ['positive' if i < 1500 else 'negative' for i in range(300)]
-        data = {'review': reviews, 'sentiment': ['positive']*150 + ['negative']*150}
-        pd.DataFrame(data).to_csv('IMDB Dataset.csv', index=False)
-        "
-          echo "Jumpstart data initialized with unique vocabulary to satisfy TF-IDF shape."
-        }
-
-      # 5. NLP Assets
+      # 4. NLP Setup
       - python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab'); nltk.download('stopwords'); nltk.download('wordnet'); nltk.download('omw-1.4')"
       
-      # 6. Run Training (Force overwrite)
+      # 5. Pipeline Execution
       - python -m pytest tests/pre -q || true
-      - dvc repro -f 
+      - dvc repro 
       - python -m pytest tests/post -q || true
       
-      # 7. Final Push
-      - dvc push -r azure -v
+      # 6. Push updated metrics/models back to Drone Azure
+      - dvc push -r azure
 
   - name: build-api-image
     image: docker:24
