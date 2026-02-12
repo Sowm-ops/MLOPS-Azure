@@ -8,8 +8,11 @@ trigger:
   event:
     - push
 
-environment:
-  DOCKER_API_VERSION: "1.43"
+volumes:
+  - name: dockersock
+    host:
+      path: /var/run/docker.sock
+
 
 clone:
   disable: true
@@ -67,19 +70,24 @@ steps:
 
   # Step 3b: Build and Push the image (The Plugin handles the Docker Daemon for you)
   - name: step-3-docker-image-packaging
-    image: plugins/docker
-    settings:
-      registry: mlopsacr123.azurecr.io
-      repo: mlopsacr123.azurecr.io/mlops-api
-      tags:
-        - v${DRONE_BUILD_NUMBER}
-      username:
-        from_secret: ACR_USERNAME
-      password:
-        from_secret: ACR_PASSWORD
+    image: docker:29
+    volumes:
+      - name: dockersock
+        path: /var/run/docker.sock
     environment:
       AZURE_REGISTRY_NAME:
         from_secret: azure_drone_registry_name
+      ACR_USERNAME:
+        from_secret: ACR_USERNAME
+      ACR_PASSWORD:
+        from_secret: ACR_PASSWORD
+    commands:
+      - echo "$ACR_PASSWORD" | docker login "${AZURE_REGISTRY_NAME}.azurecr.io" -u "$ACR_USERNAME" --password-stdin
+      - export IMAGE_NAME="${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
+      - echo "Building $IMAGE_NAME"
+      - docker build -t "$IMAGE_NAME" .
+      - docker push "$IMAGE_NAME"
+
 
 
   - name: step-4-azure-app-deployment
