@@ -4,3 +4,5 @@
     url = azure://dvcstore
 ['remote "azurejenkins"']
     url = azure://dvc-jenkins
+['remote "azuredrone"']
+    url = azure://dvcstore
