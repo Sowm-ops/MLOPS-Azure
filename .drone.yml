@@ -82,11 +82,19 @@ steps:
       ACR_PASSWORD:
         from_secret: ACR_PASSWORD
     commands:
+      # ✅ guardrails (add these 2 lines)
+      - test -n "$AZURE_REGISTRY_NAME" || (echo "AZURE_REGISTRY_NAME is empty. Fix secret: azure_drone_registry_name" && exit 1)
+      - test -n "$ACR_USERNAME" || (echo "ACR_USERNAME is empty. Fix secret: ACR_USERNAME" && exit 1)
+      - test -n "$ACR_PASSWORD" || (echo "ACR_PASSWORD is empty. Fix secret: ACR_PASSWORD" && exit 1)
+      - echo "Using registry: ${AZURE_REGISTRY_NAME}.azurecr.io"
+
+      # existing commands
       - echo "$ACR_PASSWORD" | docker login "${AZURE_REGISTRY_NAME}.azurecr.io" -u "$ACR_USERNAME" --password-stdin
       - export IMAGE_NAME="${AZURE_REGISTRY_NAME}.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
       - echo "Building $IMAGE_NAME"
       - docker build -t "$IMAGE_NAME" .
       - docker push "$IMAGE_NAME"
+
 
 
 
