@@ -109,34 +109,23 @@ steps:
       AZURE_RESOURCE_GROUP:
         from_secret: azure_drone_resource_group
     commands:
-      # azure-cli container is Alpine -> use apk
-      - apk add --no-cache jq curl
+      - "apk add --no-cache jq curl"
+      - "sh -lc 'echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6 || true'"
+      - "sh -lc 'echo 1 > /proc/sys/net/ipv6/conf/default/disable_ipv6 || true'"
+      - "sh -lc 'curl -4 -I https://login.microsoftonline.com --max-time 10 | head -n 1'"
 
-      # IMPORTANT: disable IPv6 inside container (fixes "Network unreachable" for azure login)
-      - sh -lc 'echo 1 > /proc/sys/net/ipv6/conf/all/disable_ipv6 || true'
-      - sh -lc 'echo 1 > /proc/sys/net/ipv6/conf/default/disable_ipv6 || true'
+      - "sh -lc 'echo \"$AZURE_CREDENTIALS\" > /tmp/azure.json'"
+      - "sh -lc 'export AZURE_CLIENT_ID=$(jq -r \".clientId // empty\" /tmp/azure.json); echo AZURE_CLIENT_ID_len=${#AZURE_CLIENT_ID}'"
+      - "sh -lc 'export AZURE_CLIENT_SECRET=$(jq -r \".clientSecret // empty\" /tmp/azure.json); echo AZURE_CLIENT_SECRET_len=${#AZURE_CLIENT_SECRET}'"
+      - "sh -lc 'export AZURE_TENANT_ID=$(jq -r \".tenantId // empty\" /tmp/azure.json); echo AZURE_TENANT_ID_len=${#AZURE_TENANT_ID}'"
+      - "sh -lc 'export AZURE_SUBSCRIPTION_ID=$(jq -r \".subscriptionId // empty\" /tmp/azure.json); echo AZURE_SUBSCRIPTION_ID_len=${#AZURE_SUBSCRIPTION_ID}'"
 
-      # Sanity check: must be reachable from THIS container
-      - sh -lc 'curl -4 -I https://login.microsoftonline.com --max-time 10 | head -n 1'
+      - "sh -lc 'AZURE_CLIENT_ID=$(jq -r \".clientId // empty\" /tmp/azure.json); test -n \"$AZURE_CLIENT_ID\" || (echo \"Missing clientId\" && exit 1)'"
+      - "sh -lc 'AZURE_CLIENT_SECRET=$(jq -r \".clientSecret // empty\" /tmp/azure.json); test -n \"$AZURE_CLIENT_SECRET\" || (echo \"Missing clientSecret\" && exit 1)'"
+      - "sh -lc 'AZURE_TENANT_ID=$(jq -r \".tenantId // empty\" /tmp/azure.json); test -n \"$AZURE_TENANT_ID\" || (echo \"Missing tenantId\" && exit 1)'"
+      - "sh -lc 'AZURE_SUBSCRIPTION_ID=$(jq -r \".subscriptionId // empty\" /tmp/azure.json); test -n \"$AZURE_SUBSCRIPTION_ID\" || (echo \"Missing subscriptionId\" && exit 1)'"
 
-      # Read creds
-      - echo "$AZURE_CREDENTIALS" > /tmp/azure.json
-      - export AZURE_CLIENT_ID="$(jq -r '.clientId // empty' /tmp/azure.json)"
-      - export AZURE_CLIENT_SECRET="$(jq -r '.clientSecret // empty' /tmp/azure.json)"
-      - export AZURE_TENANT_ID="$(jq -r '.tenantId // empty' /tmp/azure.json)"
-      - export AZURE_SUBSCRIPTION_ID="$(jq -r '.subscriptionId // empty' /tmp/azure.json)"
+      - "sh -lc 'AZURE_CLIENT_ID=$(jq -r \".clientId\" /tmp/azure.json); AZURE_CLIENT_SECRET=$(jq -r \".clientSecret\" /tmp/azure.json); AZURE_TENANT_ID=$(jq -r \".tenantId\" /tmp/azure.json); az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\"'"
+      - "sh -lc 'AZURE_SUBSCRIPTION_ID=$(jq -r \".subscriptionId\" /tmp/azure.json); az account set --subscription \"$AZURE_SUBSCRIPTION_ID\"'"
 
-      # Guardrails
-      - sh -lc 'test -n "$AZURE_CLIENT_ID" || (echo "Missing clientId in azure_drone_credentials" && exit 1)'
-      - sh -lc 'test -n "$AZURE_CLIENT_SECRET" || (echo "Missing clientSecret in azure_drone_credentials" && exit 1)'
-      - sh -lc 'test -n "$AZURE_TENANT_ID" || (echo "Missing tenantId in azure_drone_credentials" && exit 1)'
-      - sh -lc 'test -n "$AZURE_SUBSCRIPTION_ID" || (echo "Missing subscriptionId in azure_drone_credentials" && exit 1)'
-
-      # Login + deploy
-      - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
-      - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-
-      # Use your fixed registry hostname (since you proved secrets were flaky earlier)
-      - export IMAGE_NAME="mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
-      - echo "Deploying image: $IMAGE_NAME"
-      - az containerapp update --name "$AZURE_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --image "$IMAGE_NAME"
+      - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}; echo Deploying=$IMAGE_NAME; az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\"'"
