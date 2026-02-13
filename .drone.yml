@@ -109,9 +109,27 @@ steps:
       AZURE_RESOURCE_GROUP:
         from_secret: azure_drone_resource_group
     commands:
-      - "sh -lc 'python3 - <<\"PY\"\nimport json, os\nc=json.loads(os.environ[\"AZURE_CREDENTIALS\"])\nprint(f\"AZURE_CLIENT_ID={c.get(\"clientId\",\"\")}\")\nprint(f\"AZURE_CLIENT_SECRET={c.get(\"clientSecret\",\"\")}\")\nprint(f\"AZURE_TENANT_ID={c.get(\"tenantId\",\"\")}\")\nprint(f\"AZURE_SUBSCRIPTION_ID={c.get(\"subscriptionId\",\"\")}\")\nPY\n' > /tmp/azure.env"
-      - "sh -lc 'set -a; . /tmp/azure.env; set +a; test -n \"$AZURE_CLIENT_ID\" || (echo \"clientId missing\" && exit 1); test -n \"$AZURE_CLIENT_SECRET\" || (echo \"clientSecret missing\" && exit 1); test -n \"$AZURE_TENANT_ID\" || (echo \"tenantId missing\" && exit 1); test -n \"$AZURE_SUBSCRIPTION_ID\" || (echo \"subscriptionId missing\" && exit 1)'"
-      - "sh -lc 'az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\"'"
-      - "sh -lc 'az account set --subscription \"$AZURE_SUBSCRIPTION_ID\"'"
-      - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}; echo \"Deploying $IMAGE_NAME\"'"
-      - "sh -lc 'az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\"'"
+      # azure-cli container is alpine -> use apk
+      - apk add --no-cache jq
+
+      # parse creds (safe, no f-string quoting issues)
+      - echo "$AZURE_CREDENTIALS" > /tmp/azure.json
+      - export AZURE_CLIENT_ID="$(jq -r '.clientId // empty' /tmp/azure.json)"
+      - export AZURE_CLIENT_SECRET="$(jq -r '.clientSecret // empty' /tmp/azure.json)"
+      - export AZURE_TENANT_ID="$(jq -r '.tenantId // empty' /tmp/azure.json)"
+      - export AZURE_SUBSCRIPTION_ID="$(jq -r '.subscriptionId // empty' /tmp/azure.json)"
+
+      # guardrails - fail fast with clear errors
+      - test -n "$AZURE_CLIENT_ID" || (echo "Missing clientId in azure_drone_credentials" && exit 1)
+      - test -n "$AZURE_CLIENT_SECRET" || (echo "Missing clientSecret in azure_drone_credentials" && exit 1)
+      - test -n "$AZURE_TENANT_ID" || (echo "Missing tenantId in azure_drone_credentials" && exit 1)
+      - test -n "$AZURE_SUBSCRIPTION_ID" || (echo "Missing subscriptionId in azure_drone_credentials (it is empty/null)" && exit 1)
+
+      # login + set subscription
+      - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
+      - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+
+      # deploy the image you already pushed in step 3
+      - export IMAGE_NAME="mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}"
+      - echo "Deploying $IMAGE_NAME to $AZURE_CONTAINER_APP in $AZURE_RESOURCE_GROUP"
+      - az containerapp update --name "$AZURE_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --image "$IMAGE_NAME"
