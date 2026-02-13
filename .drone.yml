@@ -109,13 +109,9 @@ steps:
       AZURE_RESOURCE_GROUP:
         from_secret: azure_drone_resource_group
     commands:
-      - apt-get update && apt-get install -y jq
-      - echo "$AZURE_CREDENTIALS" > /tmp/azure.json
-      - export AZURE_CLIENT_ID=$(jq -r .clientId /tmp/azure.json)
-      - export AZURE_CLIENT_SECRET=$(jq -r .clientSecret /tmp/azure.json)
-      - export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)
-      - export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)
-      - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
-      - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-      - export IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v$DRONE_BUILD_NUMBER
-      - az containerapp update --name "$AZURE_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --image "$IMAGE_NAME"
+      - "sh -lc 'python3 - <<\"PY\"\nimport json, os\nc=json.loads(os.environ[\"AZURE_CREDENTIALS\"])\nprint(f\"AZURE_CLIENT_ID={c.get(\"clientId\",\"\")}\")\nprint(f\"AZURE_CLIENT_SECRET={c.get(\"clientSecret\",\"\")}\")\nprint(f\"AZURE_TENANT_ID={c.get(\"tenantId\",\"\")}\")\nprint(f\"AZURE_SUBSCRIPTION_ID={c.get(\"subscriptionId\",\"\")}\")\nPY\n' > /tmp/azure.env"
+      - "sh -lc 'set -a; . /tmp/azure.env; set +a; test -n \"$AZURE_CLIENT_ID\" || (echo \"clientId missing\" && exit 1); test -n \"$AZURE_CLIENT_SECRET\" || (echo \"clientSecret missing\" && exit 1); test -n \"$AZURE_TENANT_ID\" || (echo \"tenantId missing\" && exit 1); test -n \"$AZURE_SUBSCRIPTION_ID\" || (echo \"subscriptionId missing\" && exit 1)'"
+      - "sh -lc 'az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\"'"
+      - "sh -lc 'az account set --subscription \"$AZURE_SUBSCRIPTION_ID\"'"
+      - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}; echo \"Deploying $IMAGE_NAME\"'"
+      - "sh -lc 'az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\"'"
