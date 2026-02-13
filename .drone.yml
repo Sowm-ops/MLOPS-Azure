@@ -130,27 +130,25 @@ steps:
 
       - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}; echo Deploying=$IMAGE_NAME; az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\"'"
 
-  - name: Validate Deployment (Smoke Test)
+  - name: Validate Deployment Health
     shell: bash
     run: |
-      # 1. Fetch the live URL
-      APP_URL=$(az containerapp show \
-        --name "${{ env.AZURE_CONTAINER_APP }}" \
-        --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
-        --query "properties.configuration.ingress.fqdn" -o tsv)
+      HEALTH_URL="https://mlops-serving.victoriousstone-39525a66.swedencentral.azurecontainerapps.io/health"
       
-      echo "Testing endpoint: https://$APP_URL/health"
+      echo "Performing Smoke Test on: $HEALTH_URL"
 
-      # 2. Retry loop (Containers can take 15-30s to cycle)
       for i in {1..6}; do
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$APP_URL/health")
+        # -s: Silent, -L: Follow redirects, -w: Output only the HTTP status code
+        STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" "$HEALTH_URL")
+        
         if [ "$STATUS" -eq 200 ]; then
-          echo "Successfully reached Drone API!"
+          echo "Success! API is healthy and reachable."
           exit 0
         fi
-        echo "Waiting for revision to sync... (Attempt $i/6)"
+        
+        echo "Waiting for service... (Attempt $i/6) - Status: $STATUS"
         sleep 10
       done
 
-      echo "Deployment Validation Failed: Received HTTP $STATUS"
+      echo "Health Check Failed: Received HTTP $STATUS"
       exit 1
