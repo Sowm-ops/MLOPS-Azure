@@ -129,3 +129,28 @@ steps:
       - "sh -lc 'AZURE_SUBSCRIPTION_ID=$(jq -r \".subscriptionId\" /tmp/azure.json); az account set --subscription \"$AZURE_SUBSCRIPTION_ID\"'"
 
       - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}; echo Deploying=$IMAGE_NAME; az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\"'"
+
+  - name: Validate Deployment (Smoke Test)
+    shell: bash
+    run: |
+      # 1. Fetch the live URL
+      APP_URL=$(az containerapp show \
+        --name "${{ env.AZURE_CONTAINER_APP }}" \
+        --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
+        --query "properties.configuration.ingress.fqdn" -o tsv)
+      
+      echo "Testing endpoint: https://$APP_URL/health"
+
+      # 2. Retry loop (Containers can take 15-30s to cycle)
+      for i in {1..6}; do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://$APP_URL/health")
+        if [ "$STATUS" -eq 200 ]; then
+          echo "Successfully reached Drone API!"
+          exit 0
+        fi
+        echo "Waiting for revision to sync... (Attempt $i/6)"
+        sleep 10
+      done
+
+      echo "Deployment Validation Failed: Received HTTP $STATUS"
+      exit 1
