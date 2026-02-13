@@ -104,8 +104,6 @@ steps:
     environment:
       AZURE_CREDENTIALS:
         from_secret: azure_drone_credentials
-      AZURE_REGISTRY_NAME:
-        from_secret: azure_drone_registry_name
       AZURE_CONTAINER_APP:
         from_secret: azure_drone_container_app
       AZURE_RESOURCE_GROUP:
@@ -113,13 +111,11 @@ steps:
     commands:
       - apt-get update && apt-get install -y jq
       - echo "$AZURE_CREDENTIALS" > /tmp/azure.json
-      # Use double $$ to escape Drone's pre-processor inside commands
       - export AZURE_CLIENT_ID=$(jq -r .clientId /tmp/azure.json)
       - export AZURE_CLIENT_SECRET=$(jq -r .clientSecret /tmp/azure.json)
       - export AZURE_TENANT_ID=$(jq -r .tenantId /tmp/azure.json)
       - export AZURE_SUBSCRIPTION_ID=$(jq -r .subscriptionId /tmp/azure.json)
       - az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"
       - az account set --subscription "$AZURE_SUBSCRIPTION_ID"
-      # Simple $ works here because it's a standard shell variable now
-      - export IMAGE_NAME=$AZURE_REGISTRY_NAME.azurecr.io/mlops-api:v$DRONE_BUILD_NUMBER
+      - export IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v$DRONE_BUILD_NUMBER
       - az containerapp update --name "$AZURE_CONTAINER_APP" --resource-group "$AZURE_RESOURCE_GROUP" --image "$IMAGE_NAME"
