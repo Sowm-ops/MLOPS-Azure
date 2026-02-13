@@ -67,6 +67,17 @@ steps:
       - dvc remote modify azure url azure://dvcstore
       - dvc remote modify azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
       - dvc pull -r azure --force
+  
+  - name: debug-secrets
+    image: alpine
+    environment:
+      REGISTRY_NAME:
+        from_secret: azure_drone_registry_name
+    commands:
+      - echo "Checking if secret exists..."
+      - "if [ -z \"$REGISTRY_NAME\" ]; then echo 'SECRET IS EMPTY ❌'; else echo 'SECRET IS FOUND ✅'; fi"
+      - "echo \"The registry name length is: ${#REGISTRY_NAME} characters\""
+      - "echo \"The first three letters are: $(echo $REGISTRY_NAME | cut -c 1-3)\""
 
 # ... (Steps 1, 2, and pull-model remain the same)
 
