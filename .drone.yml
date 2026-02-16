@@ -24,18 +24,6 @@ steps:
       - git clone --depth=50 --branch "$DRONE_BRANCH" "$DRONE_REMOTE_URL" .
       - git checkout "$DRONE_COMMIT"
 
-  - name: debug-secrets
-    image: alpine
-    environment:
-      REGISTRY_NAME:
-        from_secret: azure_drone_registry_name
-    commands:
-      - "echo 'Checking if secret exists...'"
-      - "sh -lc 'if [ -z \"${REGISTRY_NAME}\" ]; then echo \"SECRET IS EMPTY ❌\"; else echo \"SECRET IS FOUND ✅\"; fi'"
-      - "sh -lc 'echo \"RAW=[${REGISTRY_NAME}]\"'"
-      - "sh -lc 'echo -n \"${REGISTRY_NAME}\" | wc -c | xargs echo \"LEN=\"'"
-      - "sh -lc 'echo -n \"${REGISTRY_NAME}\" | od -An -tx1 | head -n 2 | xargs echo \"HEX=\"'"
-      - "sh -lc 'CLEAN=$(echo -n \"${REGISTRY_NAME}\" | tr -d \"\\r\\n\" | xargs); echo \"CLEAN=[${CLEAN}]\"; echo -n \"${CLEAN}\" | wc -c | xargs echo \"CLEAN_LEN=\"'"
 
   - name: step-2-ml-training-logic
     image: python:3.10-slim
@@ -50,8 +38,8 @@ steps:
       - export PYTHONPATH=$${PYTHONPATH}:$(pwd)
       
       # 2. DVC Handshake
-      - dvc remote modify azure url azure://dvcstore
-      - dvc remote modify azure connection_string "$${AZURE_STORAGE_CONNECTION_STRING}"
+      #- dvc remote modify azure url azure://dvcstore
+      - dvc remote modify --local azure connection_string "$${AZURE_STORAGE_CONNECTION_STRING}"
       - dvc config core.remote azure
 
       # 3. Pull Data from Azure
@@ -78,7 +66,8 @@ steps:
       - apk add --no-cache bash curl jq git
       - pip3 install "dvc[azure]"
       - dvc remote modify azure url azure://dvcstore
-      - dvc remote modify azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
+      - dvc remote modify --local azure connection_string "$AZURE_STORAGE_CONNECTION_STRING"
+      - dvc config core.remote azure
       - dvc pull -r azure --force
   
 
@@ -96,7 +85,7 @@ steps:
       - "sh -lc 'test -n \"$ACR_USERNAME\" || (echo \"Missing secret: ACR_USERNAME\" && exit 1)'"
       - "sh -lc 'test -n \"$ACR_PASSWORD\" || (echo \"Missing secret: ACR_PASSWORD\" && exit 1)'"
       - "sh -lc 'echo \"$ACR_PASSWORD\" | docker login \"mlopsacr123.azurecr.io\" -u \"$ACR_USERNAME\" --password-stdin'"
-      - "sh -lc 'IMAGE_NAME=\"mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}\"; echo \"Building $IMAGE_NAME\"; docker build -t \"$IMAGE_NAME\" .; docker push \"$IMAGE_NAME\"'"
+      - "sh -lc 'IMAGE_NAME=\"mlopsacr123.azurecr.io/mlops-api:drone-${DRONE_BUILD_NUMBER}\"; echo \"Building $IMAGE_NAME\"; docker build -t \"$IMAGE_NAME\" .; docker push \"$IMAGE_NAME\"'"
 
 
   - name: step-4-azure-app-deployment
@@ -128,4 +117,4 @@ steps:
       - "sh -lc 'AZURE_CLIENT_ID=$(jq -r \".clientId\" /tmp/azure.json); AZURE_CLIENT_SECRET=$(jq -r \".clientSecret\" /tmp/azure.json); AZURE_TENANT_ID=$(jq -r \".tenantId\" /tmp/azure.json); az login --service-principal -u \"$AZURE_CLIENT_ID\" -p \"$AZURE_CLIENT_SECRET\" --tenant \"$AZURE_TENANT_ID\"'"
       - "sh -lc 'AZURE_SUBSCRIPTION_ID=$(jq -r \".subscriptionId\" /tmp/azure.json); az account set --subscription \"$AZURE_SUBSCRIPTION_ID\"'"
 
-      - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:v${DRONE_BUILD_NUMBER}; echo Deploying=$IMAGE_NAME; az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\"'"
+      - "sh -lc 'IMAGE_NAME=mlopsacr123.azurecr.io/mlops-api:drone-${DRONE_BUILD_NUMBER}; echo Deploying=$IMAGE_NAME; az containerapp update --name \"$AZURE_CONTAINER_APP\" --resource-group \"$AZURE_RESOURCE_GROUP\" --image \"$IMAGE_NAME\"'"
