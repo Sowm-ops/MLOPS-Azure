@@ -21,78 +21,107 @@ on:
       - "tests/**"
       - ".github/workflows/ci.yml"
 
-jobs:
+# Avoid two runs racing and both trying to push/commit
+concurrency:
+  group: mlops-azure-main
+  cancel-in-progress: false
 
+jobs:
   #######################################################
-  #  TRAINING JOB (DVC + Tests + Train + Push)
+  #  TRAINING JOB (DVC + Tests + Repro + Push + Commit)
   #######################################################
   train:
+    # Prevent infinite loop when workflow pushes its own commit
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
 
     env:
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
-      AZURE_CONTAINER: dvcstore
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
-    
-    - name: Add project root to PYTHONPATH
-      run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
+      - name: Add project root to PYTHONPATH
+        run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
 
-    - name: Install Dependencies
-      run: |
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install dvc[azure] pytest evidently==0.4.32
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "dvc[azure]" pytest evidently==0.4.32
 
-    - name: Configure DVC Remote
-      run: |
-        dvc remote modify --local azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
-        dvc config core.remote azure
+      - name: Configure DVC Remote (GitHub/Azure)
+        run: |
+          dvc remote modify --local azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
+          dvc config core.remote azure
+          dvc remote list
+          dvc config core.remote
 
-    - name: DVC Pull
-      run: dvc pull -r azure --force -v || echo "No cache yet."
+      - name: DVC Pull (best effort)
+        run: dvc pull -r azure --force -v || echo "No cache yet."
 
-    - name: Download NLTK Data
-      run: |
-        python - <<EOF
-        import nltk
-        nltk.download('punkt')
-        nltk.download('punkt_tab')
-        nltk.download('stopwords')
-        nltk.download('wordnet')
-        nltk.download('omw-1.4')
-        EOF
+      - name: Download NLTK Data
+        run: |
+          python - <<'EOF'
+          import nltk
+          nltk.download('punkt')
+          nltk.download('punkt_tab')
+          nltk.download('stopwords')
+          nltk.download('wordnet')
+          nltk.download('omw-1.4')
+          EOF
 
-    - name: Run Pre-Training Tests
-      run: pytest tests/pre -q
+      - name: Run Pre-Training Tests
+        run: pytest tests/pre -q
 
-    - name: Run Training Pipeline
-      run: |
-        python src/data_prep.py
-        python src/train.py
-        dvc repro
+      # IMPORTANT: do not run python scripts manually AND dvc repro
+      - name: Run Training Pipeline (DVC)
+        run: dvc repro -v
 
-    - name: Run Post-Training Tests
-      run: pytest tests/post -q
+      - name: Run Post-Training Tests
+        run: pytest tests/post -q
 
-    - name: Push updated artifacts
-      run: dvc push -r azure -v
+      - name: Push updated artifacts to DVC remote
+        run: dvc push -r azure -v
 
-    - name: Commit updated pipeline files
-      run: |
-        git config --global user.name "github-actions"
-        git config --global user.email "github-actions@github.com"
-        git add dvc.lock metrics/
-        git commit -m "Auto update: training + dvc artifacts" || echo "No changes"
-        git push
+      - name: Commit updated pipeline files (dvc.lock + metrics) to main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add dvc.lock metrics/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "Auto update: training + dvc artifacts [skip ci]"
+
+          # Rebase onto latest main to avoid non-fast-forward errors.
+          # Retry once in case another pipeline updated main at the same time.
+          for i in 1 2; do
+            git pull --rebase origin main
+            if git push origin HEAD:main; then
+              echo "Pushed successfully."
+              exit 0
+            fi
+            echo "Push failed (attempt $i). Retrying after rebase..."
+            sleep 3
+          done
+
+          echo "Final push failed."
+          exit 1
 
   ########################################################
   #  BUILD DOCKER IMAGE (PULL MODELS FROM DVC)
@@ -105,40 +134,42 @@ jobs:
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.10"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: "pip"
 
-    - name: Install DVC
-      run: pip install dvc[azure]
+      - name: Install DVC
+        run: pip install "dvc[azure]"
 
-    - name: Configure DVC Remote
-      run: |
-        dvc remote modify --local azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
-        dvc config core.remote azure
+      - name: Configure DVC Remote (GitHub/Azure)
+        run: |
+          dvc remote modify --local azure connection_string "${AZURE_STORAGE_CONNECTION_STRING}"
+          dvc config core.remote azure
 
+      - name: DVC Pull Models
+        run: dvc pull -r azure --force -v
 
-    - name: DVC Pull Models
-      run: dvc pull -r azure --force -v
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.AZURE_REGISTRY_NAME }}
 
-    - name: Login to Azure Container Registry
-      run: az acr login --name ${{ secrets.AZURE_REGISTRY_NAME }}
-
-    - name: Build and Push Docker Image
-      run: |
-        IMAGE_NAME=${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/mlops-api:gha-${{ github.run_number }}
-        echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-        docker build -t $IMAGE_NAME .
-        docker push $IMAGE_NAME
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE_NAME=${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/mlops-api:gha-${{ github.run_number }}
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+          docker build -t $IMAGE_NAME .
+          docker push $IMAGE_NAME
 
   ########################################################
   #  DEPLOY TO AZURE CONTAINER APPS
@@ -148,14 +179,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Azure Login
-      uses: azure/login@v2
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Deploy to Azure Container Apps
-      run: |
-        az containerapp update \
-          --name ${{ secrets.AZURE_CONTAINER_APP }} \
-          --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-          --image ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/mlops-api:gha-${{ github.run_number }}
+      - name: Deploy to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ secrets.AZURE_CONTAINER_APP }} \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.AZURE_REGISTRY_NAME }}.azurecr.io/mlops-api:gha-${{ github.run_number }}
